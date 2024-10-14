@@ -1,0 +1,180 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-template-config
+  namespace: caas-gateway
+  labels:
+    distribution: ccm
+data:
+  sign_out.conf: |
+    set $original_scheme $scheme;
+    set $original_host $host;
+
+    if ($http_x_forwarded_proto != '') {
+      set $original_scheme $http_x_forwarded_proto;
+    }
+
+    if ($http_x_forwarded_host != '') {
+      set $original_host $http_x_forwarded_host;
+    }
+
+    location /sign_out {
+      include /etc/nginx/common_headers.conf;
+      return 302 $original_scheme://$original_host/finish_sign_out;
+    }
+  common_headers.conf: |
+    proxy_set_header Accept $http_accept;
+    proxy_set_header Accept-Encoding $http_accept_encoding;
+    proxy_set_header Accept-Language $http_accept_language;
+    proxy_set_header Cache-Control $http_cache_control;
+    proxy_set_header Connection $http_connection;
+    proxy_set_header Content-Length $http_content_length;
+    proxy_set_header Content-Type $http_content_type;
+    proxy_set_header DNT $http_dnt;
+    proxy_set_header Host $http_host;
+    proxy_set_header CAAS_TokenLogonAppID $http_caas_tokenlogonappid;
+    proxy_set_header Origin $http_origin;
+    proxy_set_header Pragma $http_pragma;
+    proxy_set_header Priority $http_priority;
+    proxy_set_header Referer $http_referer;
+    proxy_set_header Sec-Fetch-Dest $http_sec_fetch_dest;
+    proxy_set_header Sec-Fetch-Mode $http_sec_fetch_mode;
+    proxy_set_header Sec-Fetch-Site $http_sec_fetch_site;
+    proxy_set_header Sec-Fetch-User $http_sec_fetch_user;
+    proxy_set_header Sec-GPC $http_sec_gpc;
+    proxy_set_header TE $http_te;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Upgrade-Insecure-Requests $http_upgrade_insecure_requests;
+    proxy_set_header User-Agent $http_user_agent;
+    proxy_set_header Via $http_via;
+    proxy_set_header Sec-Websocket-Extensions $http_sec_websocket_extensions;
+    proxy_set_header Sec-Websocket-Key $http_sec_websocket_key;
+    proxy_set_header Sec-Websocket-Protocol $http_sec_websocket_protocol;
+    proxy_set_header Sec-Websocket-Version $http_sec_websocket_version;
+    proxy_set_header X-Cloud-Trace-Context $http_x_cloud_trace_context;
+    # we may want to review what the value for this should be
+    # proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-For $http_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+    proxy_set_header X-GCIS-E2E-Key $http_x_gcis_e2e_key;
+    proxy_set_header X-GCIS-Request-Key $http_x_gcis_request_key;
+  common_authorise.conf: |
+    expires -1;
+    internal;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length 0;
+    proxy_set_header SM_USER $http_sm_user;
+    proxy_http_version 1.1;
+    client_max_body_size 0;
+    client_body_buffer_size 0;
+  nginx-caas.conf: |
+    pid        /tmp/nginx.pid;
+    events {}
+    http {
+      gzip on;
+      gzip_vary off;
+      gzip_comp_level 6;
+      gzip_static on;
+      gzip_min_length 1024;
+      gzip_proxied any;
+      gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml application/javascript;
+      gzip_disable "MSIE [1-6]\.";
+
+      proxy_temp_path /tmp/proxy_temp;
+      client_body_temp_path /tmp/client_temp;
+      fastcgi_temp_path /tmp/fastcgi_temp;
+      uwsgi_temp_path /tmp/uwsgi_temp;
+      scgi_temp_path /tmp/scgi_temp;
+
+      log_format json_combined escape=json
+      '{'
+        '"date":"$time_local",'
+        '"remote_addr":"$remote_addr",'
+        '"request":"$request",'
+        '"status": "$status",'
+        '"body_bytes_sent":"$body_bytes_sent",'
+        '"request_time":"$request_time",'
+        '"http_referrer":"$http_referer",'
+        '"http_user_agent":"$http_user_agent",'
+        '"e2ekey":"$http_x_gcis_e2e_key",'
+        '"method":"$request_method",'
+        '"requestKey":"$sent_http_x_request_key",'
+        '"requestPath":"$http_host$request_uri"'
+      '}';
+
+      access_log /dev/stdout json_combined;
+
+      server {
+        listen 8080;
+        # Remove the version from built-in error pages
+        # "nginx/1.21.5" -> "nginx"
+        # We're trying to never display those, but defense-in-depth
+        server_tokens off;
+        proxy_busy_buffers_size   512k;
+        proxy_buffers   4 512k;
+        proxy_buffer_size   256k;
+        underscores_in_headers on;
+
+        proxy_pass_request_headers off;
+        add_header Content-Security-Policy "default-src 'self'; connect-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; style-src 'unsafe-inline' 'self';" always;
+
+        # endpoint for google health check
+        location = /ping {
+          expires -1;
+          access_log    off;
+          return 200;
+        }
+
+        location = /authorise {
+          include /etc/nginx/common_authorise.conf;
+          proxy_pass http://profile.caas-auth.svc.cluster.local/caas/authorise;
+        }
+
+        location /events {
+          expires -1;
+          auth_request /authorise;
+          auth_request_set $auth_token $upstream_http_authorization;
+          include /etc/nginx/common_headers.conf;
+          proxy_set_header Authorization $auth_token;
+          proxy_http_version 1.1;
+          proxy_pass http://sse-server.user-api.svc.cluster.local;
+          add_header Strict-Transport-Security "max-age=31536000; includeSubDomains;";
+        }
+
+        location /message {
+          expires -1;
+          auth_request /authorise;
+          auth_request_set $auth_token $upstream_http_authorization;
+          include /etc/nginx/common_headers.conf;
+          proxy_set_header Authorization $auth_token;
+          proxy_http_version 1.1;
+          proxy_pass http://sse-server.user-api.svc.cluster.local;
+          add_header Strict-Transport-Security "max-age=31536000; includeSubDomains;";
+        }
+
+        location / {
+          expires -1;
+          auth_request /authorise;
+          auth_request_set $auth_token $upstream_http_authorization;
+          include /etc/nginx/common_headers.conf;
+          proxy_set_header Authorization $auth_token;
+          proxy_http_version 1.1;
+          proxy_pass http://sse-client.user-api.svc.cluster.local;
+          add_header Strict-Transport-Security "max-age=31536000; includeSubDomains;";
+        }
+
+        include /etc/nginx/sign_out.conf;
+      }
+    }
+  error.html: |
+    <!DOCTYPE html>
+    <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Error</title>
+        </head>
+        <body>
+            <h2>There was a problem with the request. Please contact your administrator if the problem persists.</h2>
+        </body>
+    </html>
+

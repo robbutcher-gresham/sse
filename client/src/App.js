@@ -13,7 +13,7 @@ import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import "./App.css";
 
-const baseUrl = "//localhost:3001";
+const baseUrl = "";
 
 const App = () => {
   const [message, setMessage] = useState("");
