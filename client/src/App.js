@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Typography from "@mui/material/Typography";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
@@ -8,6 +8,8 @@ import MessageIcon from "@mui/icons-material/Message";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import TextField from "@mui/material/TextField";
+import Snackbar from "@mui/material/Snackbar";
+import Alert from "@mui/material/Alert";
 import "./App.css";
 
 const baseUrl = "//localhost:3001";
@@ -15,31 +17,81 @@ const baseUrl = "//localhost:3001";
 const App = () => {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
-  const eventSource = useRef();
+  const [connectionState, setConnectionState] = useState();
+  const [notification, setNotification] = useState({
+    show: false,
+  });
 
   useEffect(() => {
-    if (!eventSource.current) {
-      eventSource.current = new EventSource(`${baseUrl}/events`);
+    const eventSource = new EventSource(`${baseUrl}/events`);
+    setConnectionState(eventSource.readyState);
 
-      eventSource.current.onmessage = (event) => {
-        setMessages((prev) => [...prev, ...JSON.parse(event.data)]);
-      };
+    eventSource.onopen = () => setConnectionState(eventSource.readyState);
 
-      eventSource.current.onerror = (err) => console.error(err);
-    }
+    eventSource.onmessage = (event) =>
+      setMessages((prev) => [...prev, ...JSON.parse(event.data)]);
+
+    eventSource.onerror = () => setConnectionState(eventSource.readyState);
+
+    return () => {
+      eventSource.close();
+    };
   }, []);
+
+  useEffect(() => {
+    switch (connectionState) {
+      case 0:
+        setNotification({
+          show: true,
+          type: "info",
+          message: "Connecting",
+        });
+        break;
+      case 1:
+        setNotification({
+          show: true,
+          type: "success",
+          message: "Connected",
+        });
+        break;
+      case 2:
+        setNotification({
+          show: true,
+          type: "error",
+          message: "Closed",
+        });
+        break;
+      default:
+    }
+  }, [connectionState]);
+
+  const closeNotification = () => {
+    setNotification((prev) => ({ ...prev, show: false }));
+  };
 
   const submit = async (e) => {
     e.preventDefault();
-    const response = await fetch(`${baseUrl}/message`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ data: message }),
-    });
-    if (!response.ok) {
-      console.error(response);
+    try {
+      const response = await fetch(`${baseUrl}/message`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ data: message }),
+      });
+      if (!response.ok) {
+        setNotification({
+          show: true,
+          type: "error",
+          message: "Message rejected by server",
+        });
+      }
+    } catch (_) {
+      setNotification({
+        show: true,
+        type: "error",
+        message: "Failed to send message",
+      });
     }
   };
 
@@ -81,6 +133,20 @@ const App = () => {
           </CardContent>
         </Card>
       )}
+      <Snackbar
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        key={notification.type}
+        open={notification.show}
+        onClose={closeNotification}
+      >
+        <Alert
+          severity={notification.type}
+          variant="filled"
+          sx={{ width: "100%" }}
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
     </div>
   );
 };
