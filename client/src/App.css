@@ -1,0 +1,12 @@
+* {
+  box-sizing: border-box;
+}
+
+.App {
+  min-height: 100vh;
+  padding: 2rem;
+  background-color: #282c34;
+  display: flex;
+  flex-direction: column;
+  row-gap: 1rem;
+}

@@ -15,7 +15,7 @@ const eventHeaders = {
   "Cache-Control": "no-cache",
 };
 
-const PORT = 3000;
+const PORT = 3001;
 
 let clients = [];
 const messages = [];
@@ -41,14 +41,18 @@ app.get("/events", (request, response) => {
 
 const broadcast = (message) => {
   clients.forEach((client) =>
-    client.response.write(`data: ${JSON.stringify(message)}\n\n`)
+    client.response.write(`data: ${JSON.stringify([message])}\n\n`)
   );
 };
 
-app.post("/message", async ({ body }, respsonse) => {
-  messages.push(body);
-  respsonse.json(body);
-  return broadcast(body);
+app.post("/message", async ({ body }, response) => {
+  const message = {
+    id: uuidv4(),
+    data: body.data,
+  };
+  messages.push(message);
+  response.sendStatus(200);
+  return broadcast(message);
 });
 
 app.listen(PORT, () => {
