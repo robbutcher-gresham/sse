@@ -1,0 +1,3 @@
+# SSE Server
+
+`npm start`
