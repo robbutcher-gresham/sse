@@ -26,7 +26,10 @@ const App = () => {
     const eventSource = new EventSource(`${baseUrl}/events`);
     setConnectionState(eventSource.readyState);
 
-    eventSource.onopen = () => setConnectionState(eventSource.readyState);
+    eventSource.onopen = () => {
+      setMessages([]);
+      setConnectionState(eventSource.readyState);
+    };
 
     eventSource.onmessage = (event) =>
       setMessages((prev) => [...prev, ...JSON.parse(event.data)]);
@@ -79,7 +82,9 @@ const App = () => {
         },
         body: JSON.stringify({ data: message }),
       });
-      if (!response.ok) {
+      if (response.ok) {
+        setMessage("");
+      } else {
         setNotification({
           show: true,
           type: "error",
