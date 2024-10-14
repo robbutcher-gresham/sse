@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sse-server
+  namespace: user-api
+  labels:
+    app: sse-server
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: 3000
+      protocol: TCP
+      name: sse-server
+  selector:
+    app: sse-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sse-server
+  namespace: user-api
+  labels:
+    app: sse-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sse-server
+  template:
+    metadata:
+      labels:
+        app: sse-server
+        distribution: ccm
+    spec:
+      containers:
+        - name: sse-server
+          image: "us-east1-docker.pkg.dev/gothic-parser-227615/ccm/sse-server@sha256:10faefb1afdfba333665095c6600d9ea8a906689283c4dc20f4520cf6286002b"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "100Mi"
+            limits:
+              cpu: "1"
+              memory: "100Mi"
