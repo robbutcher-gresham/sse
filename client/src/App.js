@@ -79,6 +79,11 @@ const App = () => {
 
   const submit = async (e) => {
     e.preventDefault();
+
+    if (!message?.trim()) {
+      return;
+    }
+
     try {
       const response = await fetch(`${baseUrl}/message`, {
         method: "POST",
