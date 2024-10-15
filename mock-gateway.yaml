@@ -1,0 +1,142 @@
+apiVersion: v1
+data:
+  nginx.conf: |
+    pid        /tmp/nginx.pid;
+    events {}
+    http {
+      gzip on;
+      gzip_vary off;
+      gzip_comp_level 6;
+      gzip_static on;
+      gzip_min_length 1024;
+      gzip_proxied any;
+      gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml application/javascript;
+      gzip_disable "MSIE [1-6]\.";
+
+      proxy_temp_path /tmp/proxy_temp;
+      client_body_temp_path /tmp/client_temp;
+      fastcgi_temp_path /tmp/fastcgi_temp;
+      uwsgi_temp_path /tmp/uwsgi_temp;
+      scgi_temp_path /tmp/scgi_temp;
+
+      log_format json_combined escape=json
+      '{'
+        '"date":"$time_local",'
+        '"remote_addr":"$remote_addr",'
+        '"request":"$request",'
+        '"status": "$status",'
+        '"body_bytes_sent":"$body_bytes_sent",'
+        '"request_time":"$request_time",'
+        '"http_referrer":"$http_referer",'
+        '"http_user_agent":"$http_user_agent",'
+        '"e2ekey":"$http_x_gcis_e2e_key",'
+        '"method":"$request_method",'
+        '"requestKey":"$sent_http_x_request_key",'
+        '"requestPath":"$http_host$request_uri"'
+      '}';
+
+      access_log /dev/stdout json_combined;
+
+      server {
+        listen 8080;
+        server_name ${CCM_HOSTNAME};
+        underscores_in_headers on;
+
+        add_header Content-Security-Policy "default-src 'self'; connect-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; style-src 'unsafe-inline' 'self';" always;
+
+        location = /authenticate {
+          internal;
+          proxy_pass_request_body off;
+          proxy_set_header Content-Length 0;
+          proxy_http_version 1.1;
+          proxy_pass http://caas-mock/authenticate;
+          client_max_body_size 0;
+          client_body_buffer_size 0;
+        }
+
+        location = /login {
+          proxy_http_version 1.1;
+          proxy_pass http://caas-mock/login;
+        }
+
+        location /subscriptions {
+          auth_request /authenticate;
+          error_page 401 = @error401;
+          auth_request_set $sm_user $upstream_http_sm_user;
+          proxy_set_header SM_USER $sm_user;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection $http_connection;
+          proxy_http_version 1.1;
+          proxy_pass http://gateway.caas-gateway.svc.cluster.local;
+        }
+
+        location /events {
+          auth_request /authenticate;
+          error_page 401 = @error401;
+          auth_request_set $sm_user $upstream_http_sm_user;
+          proxy_set_header SM_USER $sm_user;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_http_version 1.1;
+          proxy_set_header Connection "";
+          keepalive_timeout 0;
+          proxy_read_timeout 3600;
+          proxy_pass http://gateway.caas-gateway.svc.cluster.local;
+        }
+
+        location / {
+          auth_request /authenticate;
+          error_page 401 = @errorRedirect401;
+          auth_request_set $sm_user $upstream_http_sm_user;
+          proxy_set_header SM_USER $sm_user;
+          proxy_set_header CAAS_TokenLogonAppID "mock-app-id";
+          proxy_http_version 1.1;
+          proxy_pass http://gateway.caas-gateway.svc.cluster.local;
+        }
+
+        location /sign_out {
+          auth_request /authenticate;
+          error_page 401 = @errorRedirect401;
+          auth_request_set $sm_user $upstream_http_sm_user;
+          proxy_set_header SM_USER $sm_user;
+          proxy_set_header x-forwarded-host $host;
+          proxy_http_version 1.1;
+          proxy_pass http://gateway.caas-gateway.svc.cluster.local;
+        }
+
+        location /finish_sign_out {
+          return 302 "${SCHEME}://$http_host/login";
+        }
+
+        location @error401 {
+          return 401 "${SCHEME}://$host/login";
+        }
+
+        location @errorRedirect401 {
+          if ($request_method = GET) {
+            return 302 ${SCHEME}://$host/login?url=${SCHEME}://$http_host$uri;
+          }
+          return 401 "${SCHEME}://$host/login";
+        }
+      }
+
+      server {
+        listen 8080 default_server;
+        server_name everythingelse;
+
+        # for gke healthcheck
+        location = / {
+          access_log    off;
+          return 200;
+        }
+
+        location / {
+          return 404;
+        }
+      }
+    }
+kind: ConfigMap
+metadata:
+  labels:
+    distribution: ccm
+  name: caas-mock-gateway-template-config
+  namespace: caas-mock
