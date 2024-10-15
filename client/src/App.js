@@ -8,6 +8,7 @@ import MessageIcon from "@mui/icons-material/Message";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import TextField from "@mui/material/TextField";
+import Button from "@mui/material/Button";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import "./App.css";
@@ -33,6 +34,10 @@ const App = () => {
 
     eventSource.onmessage = (event) =>
       setMessages((prev) => [...prev, ...JSON.parse(event.data)]);
+
+    eventSource.addEventListener("delete-all-messages", () => {
+      setMessages([]);
+    });
 
     eventSource.onerror = () => setConnectionState(eventSource.readyState);
 
@@ -100,8 +105,30 @@ const App = () => {
     }
   };
 
+  const clearAll = async () => {
+    try {
+      const response = await fetch(`${baseUrl}/messages`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        setNotification({
+          show: true,
+          type: "error",
+          message: "Request failed",
+        });
+      }
+    } catch (_) {
+      setNotification({
+        show: true,
+        type: "error",
+        message: "Failed to send request",
+      });
+    }
+  };
+
   return (
-    <div className="App">
+    <div className="app">
       <Card>
         <CardContent>
           <Typography variant="h4" component="h1">
@@ -135,6 +162,11 @@ const App = () => {
                 </ListItem>
               ))}
             </List>
+            <div className="button-container">
+              <Button variant="contained" onClick={clearAll}>
+                Clear all
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

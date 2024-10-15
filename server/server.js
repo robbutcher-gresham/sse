@@ -18,7 +18,14 @@ const eventHeaders = {
 const PORT = 3001;
 
 let clients = [];
-const messages = [];
+let messages = [];
+
+const broadcast = (message, type = "message") => {
+  clients.forEach((client) => {
+    client.response.write(`event: ${type}\n`);
+    client.response.write(`data: ${JSON.stringify([message])}\n\n`);
+  });
+};
 
 app.get("/status", (_, response) => response.json({ clients: clients.length }));
 
@@ -39,12 +46,6 @@ app.get("/events", (request, response) => {
   });
 });
 
-const broadcast = (message) => {
-  clients.forEach((client) =>
-    client.response.write(`data: ${JSON.stringify([message])}\n\n`)
-  );
-};
-
 app.post("/message", async ({ body }, response) => {
   const message = {
     id: uuidv4(),
@@ -53,6 +54,12 @@ app.post("/message", async ({ body }, response) => {
   messages.push(message);
   response.sendStatus(200);
   return broadcast(message);
+});
+
+app.delete("/messages", async (_, response) => {
+  messages = [];
+  response.sendStatus(200);
+  return broadcast("", "delete-all-messages");
 });
 
 app.listen(PORT, () => {
