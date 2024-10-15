@@ -35,7 +35,7 @@ spec:
     spec:
       containers:
         - name: sse-server
-          image: "us-east1-docker.pkg.dev/gothic-parser-227615/ccm/sse-server@sha256:33c4319b482564e91141e6d65fc67328e3dd5ab4467a600b3325b16410011cbb"
+          image: "us-east1-docker.pkg.dev/gothic-parser-227615/ccm/sse-server@sha256:d8b90dcf6249bc5ea62851157ae1988af0446ef89dd715c45c68aa643156ce4a"
           resources:
             requests:
               cpu: "100m"
