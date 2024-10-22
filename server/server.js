@@ -21,7 +21,8 @@ let clients = [];
 let messages = [];
 
 const broadcast = (message, type = "message") => {
-  clients.forEach((client) => {
+  clients.forEach((client, id) => {
+    client.response.write(`id: ${id}\n`);
     client.response.write(`event: ${type}\n`);
     client.response.write(`data: ${JSON.stringify([message])}\n\n`);
   });
